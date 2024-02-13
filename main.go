@@ -6,13 +6,14 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 type Transaction struct {
 	ID     string
 	Fee    int
 	Weight int
-	Parent string
+	Parents []string
 }
 
 func main() {
@@ -35,37 +36,50 @@ func getTransactions() []*Transaction {
 		fmt.Println("Error reading CSV:", err)
 		return nil
 	}
-
+	
 	var mainData []*Transaction
+
 	for _, record := range records {
-		fee, _ := strconv.Atoi(record[1])
-		weight, _ := strconv.Atoi(record[2])
+		
+		row:=strings.Split(record[0], ",")
+		
+		fee, _ := strconv.Atoi(row[1])
+		weight, _ := strconv.Atoi(row[2])
+		var parents []string
+		if row[3] != "" {
+			parents = strings.Split(row[3], ",")
+		}
 		transaction := &Transaction{
-			ID:     record[0],
+			ID:     row[0],
 			Fee:    fee,
 			Weight: weight,
-			Parent: record[3],
+			Parents: parents,
 		}
+		
 		mainData = append(mainData, transaction)
 	}
-
+	
 	sort.Slice(mainData, func(i, j int) bool {
 		return mainData[i].Fee > mainData[j].Fee
 	})
 
-	return getMaxBlockweightByFee(mainData)
+	sortedByParent:= sortTrxByParents(mainData)
+
+	filteredTransactions:= getMaxBlockweightByFee(sortedByParent)
+	return filteredTransactions
+	
 }
 
 func getMaxBlockweightByFee(transactions []*Transaction) []*Transaction {
 	sumOfWeight := 0
-	var cherryPicked []*Transaction
+	var filteredByweight []*Transaction
 	for _, transaction := range transactions {
 		if sumOfWeight < 4000000 {
-			cherryPicked = append(cherryPicked, transaction)
+			filteredByweight = append(filteredByweight, transaction)
 			sumOfWeight += transaction.Weight
 		}
 	}
-	return cherryPicked
+	return filteredByweight
 }
 
 func sortTrxByParents(transactions []*Transaction) []*Transaction {
@@ -73,14 +87,21 @@ func sortTrxByParents(transactions []*Transaction) []*Transaction {
 	for _, trx := range transactions {
 		transactionMap[trx.ID] = trx
 	}
-
+	
+	
 	var resArr []*Transaction
 	for _, trx := range transactions {
-		if trx.Parent != "" {
-			parents := parseParents(trx.Parent)
-			for _, parent := range parents {
+		
+		if len(trx.Parents) > 0 {
+			
+			for _, parent := range trx.Parents {
 				if parentTrx, ok := transactionMap[parent]; ok {
-					if parentTrx != nil {
+					fmt.Println(parentTrx)
+					
+					if ok  {
+						//check if the parent already exists on resArr
+						resArr = append(resArr, parentTrx)
+						
 						resArr = append(resArr, trx)
 						break
 					}
@@ -90,9 +111,8 @@ func sortTrxByParents(transactions []*Transaction) []*Transaction {
 			resArr = append(resArr, trx)
 		}
 	}
-	return resArr
+	
+	 return resArr
 }
 
-func parseParents(parentString string) ([]string, error) {
-	return csv.NewReader(os.Stdin).Read(strings.NewReader(parentString)),nil
-}
+
